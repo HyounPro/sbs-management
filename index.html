@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SBS아카데미안산 개강안내</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo">SBS아카데미안산 개강안내</div>
+      <input class="search-box" type="text" id="searchInput" placeholder="과목명 검색...">
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="weekday_apr">📅 4월 평일반</button>
+      <button class="tab-btn" data-tab="weekend_apr">🗓️ 4월 주말반</button>
+      <button class="tab-btn" data-tab="weekday_mar">📅 3월 평일반</button>
+      <button class="tab-btn" data-tab="weekend_mar">🗓️ 3월 주말반</button>
+    </div>
+  </header>
+
+  <!-- 강의실 필터 -->
+  <div class="filter-bar" id="filterBar">
+    <button class="filter-btn active" data-room="전체">전체</button>
+    <button class="filter-btn" data-room="A">A강의장</button>
+    <button class="filter-btn" data-room="B">B강의장</button>
+    <button class="filter-btn" data-room="C">C강의장</button>
+    <button class="filter-btn" data-room="D">D강의장</button>
+    <button class="filter-btn" data-room="E">E강의장</button>
+    <button class="filter-btn" data-room="F">F강의장</button>
+    <button class="filter-btn" data-room="G">G강의장</button>
+    <button class="filter-btn" data-room="H">H강의장</button>
+  </div>
+
+  <!-- 툴바 -->
+  <div class="toolbar">
+    <div class="total-count">총 <span id="totalCount">0</span>개 과목</div>
+    <div class="toolbar-actions">
+      <button class="btn btn-outline" id="multiSelectBtn">다중선택</button>
+      <button class="btn btn-primary" id="copyAllBtn">전체 복사</button>
+    </div>
+  </div>
+
+  <!-- 카드 목록 -->
+  <main class="grid" id="cardGrid"></main>
+
+  <!-- 선택 복사 바 -->
+  <div class="select-bar" id="selectBar">
+    <span><span class="select-count" id="selectCount">0</span>개 선택됨</span>
+    <button class="btn btn-primary" id="copySelectedBtn">선택 복사</button>
+    <button class="btn btn-outline" id="clearSelectBtn">선택 해제</button>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

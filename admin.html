@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>관리자 — SBS아카데미안산</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- 로그인 화면 -->
+  <div class="login-wrap" id="loginWrap">
+    <div class="login-box">
+      <div class="login-title">관리자 로그인</div>
+      <div class="login-sub">SBS아카데미안산 개강안내 관리 페이지</div>
+      <div class="form-group">
+        <label class="form-label">이메일</label>
+        <input class="form-input" type="email" id="loginEmail" placeholder="이메일 입력">
+      </div>
+      <div class="form-group">
+        <label class="form-label">비밀번호</label>
+        <input class="form-input" type="password" id="loginPw" placeholder="비밀번호 입력">
+      </div>
+      <div class="error-msg" id="loginError"></div>
+      <button class="btn btn-primary" style="width:100%; padding:12px; font-size:15px; margin-top:8px;" id="loginBtn">로그인</button>
+    </div>
+  </div>
+
+  <!-- 관리자 메인 화면 -->
+  <div style="display:none;" id="adminWrap">
+    <header class="header">
+      <div class="header-top">
+        <div class="logo">관리자 페이지</div>
+        <div style="display:flex; gap:8px;">
+          <a href="index.html" class="btn btn-outline" style="text-decoration:none;">공개 페이지</a>
+          <button class="btn btn-outline" id="logoutBtn">로그아웃</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="admin-wrap">
+      <div class="admin-header">
+        <div class="admin-title">시간표 업로드 & 개강안내 생성</div>
+      </div>
+
+      <!-- 파일 업로드 섹션 -->
+      <div class="section">
+        <div class="section-title">엑셀 시간표 업로드</div>
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">📂</div>
+          <div class="upload-text">파일을 드래그하거나 <span>클릭하여 선택</span>하세요</div>
+          <div class="upload-text" style="margin-top:6px; font-size:12px;">.xlsx 파일만 지원</div>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx" multiple style="display:none;">
+        <div class="file-list" id="fileList"></div>
+
+        <button class="process-btn" id="processBtn" disabled>
+          ✨ Claude AI로 개강안내 생성
+        </button>
+      </div>
+
+      <!-- 처리 로그 -->
+      <div class="section">
+        <div class="section-title">처리 로그</div>
+        <div class="log-box" id="logBox">
+          <span style="color:#555;">대기 중...</span>
+        </div>
+      </div>
+
+      <!-- 현재 데이터 현황 -->
+      <div class="section">
+        <div class="section-title">현재 등록된 개강안내</div>
+        <div id="statsGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px;">
+          <!-- JS로 렌더링 -->
+        </div>
+        <button class="btn btn-outline" style="margin-top:16px; width:100%;" id="clearDataBtn">
+          전체 데이터 초기화
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
