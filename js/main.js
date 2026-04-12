@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadClasses() {
-  const { data, error } = await supabase
+  const { data, error } = await sbClient
     .from('classes')
     .select('*')
     .order('room_slot', { ascending: true });

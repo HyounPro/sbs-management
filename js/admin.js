@@ -3,7 +3,7 @@ let uploadedFiles = [];
 
 // ── 초기화 ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await sbClient.auth.getSession();
   if (session) showAdmin();
   else showLogin();
 
@@ -38,7 +38,7 @@ async function doLogin() {
 
   if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력하세요.'; return; }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+  const { error } = await sbClient.auth.signInWithPassword({ email, password: pw });
   if (error) {
     errEl.textContent = '이메일 또는 비밀번호가 올바르지 않습니다.';
     return;
@@ -50,7 +50,7 @@ async function doLogin() {
 function bindAdminEvents() {
   // 로그아웃
   document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+    await sbClient.auth.signOut();
     showLogin();
   });
 
@@ -78,7 +78,7 @@ function bindAdminEvents() {
   // 초기화 버튼
   document.getElementById('clearDataBtn').addEventListener('click', async () => {
     if (!confirm('모든 개강안내 데이터를 삭제하시겠습니까?')) return;
-    const { error } = await supabase.from('classes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error } = await sbClient.from('classes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     if (error) { addLog('데이터 초기화 실패: ' + error.message, 'err'); return; }
     addLog('데이터 초기화 완료', 'ok');
     loadStats();
@@ -138,7 +138,7 @@ async function processFiles() {
 
       // 2. Supabase Edge Function 호출 (Claude AI 처리)
       addLog('✨ Claude AI 분석 중...', 'info');
-      const { data, error } = await supabase.functions.invoke('process-schedule', {
+      const { data, error } = await sbClient.functions.invoke('process-schedule', {
         body: {
           fileName: file.name,
           rawData: rawData,
@@ -198,7 +198,7 @@ async function loadStats() {
   grid.innerHTML = '<span style="color:#666; font-size:13px;">로딩 중...</span>';
 
   const counts = await Promise.all(
-    tabs.map(t => supabase.from('classes').select('id', { count: 'exact', head: true }).eq('schedule_type', t.key))
+    tabs.map(t => sbClient.from('classes').select('id', { count: 'exact', head: true }).eq('schedule_type', t.key))
   );
 
   grid.innerHTML = tabs.map((t, i) => `
