@@ -91,7 +91,7 @@ function parseExcel(rows: unknown[][]): ClassRow[] {
 
       const roomSlot = headers[ci] || '';
       if (!roomSlot || roomSlot === '정원') continue;
-      const room = roomSlot[0];
+      const room = extractRoom(roomSlot);
 
       if (val.startsWith('개:')) {
         const p = pending.get(ci);
@@ -135,6 +135,12 @@ function parseExcel(rows: unknown[][]): ClassRow[] {
 }
 
 // ── 헬퍼 ─────────────────────────────────────────────────
+
+// 강의실 슬롯에서 강의실명 추출: "A-1"→"A", "ART-1"→"ART", "게임A-2"→"게임A"
+function extractRoom(roomSlot: string): string {
+  const m = roomSlot.match(/^(.+)-\d+$/);
+  return m ? m[1] : roomSlot;
+}
 
 // A열 시간 추출: "TIME:09:00" → "09:00"
 function extractTime(val: unknown): string {

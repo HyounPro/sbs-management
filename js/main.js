@@ -17,6 +17,9 @@ const DISCORD_LINKS = {
   'F': 'https://discord.gg/cEDxpq6aVS',
   'G': 'https://discord.gg/KrHJzzErWt',
   'H': 'https://discord.gg/7x4cFMtgcnw',
+  'ART': '',
+  '게임A': '',
+  '게임D': '',
 };
 
 const DEFAULT_TEMPLATE =
