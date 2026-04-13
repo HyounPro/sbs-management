@@ -7,20 +7,7 @@ let searchQuery = '';
 let multiSelectMode = false;
 let selectedIds = new Set();
 let messageTemplate = '';
-
-const DISCORD_LINKS = {
-  'A': 'https://discord.gg/UbPVxWgcct',
-  'B': 'https://discord.gg/VBaPncjxXe',
-  'C': 'https://discord.gg/2WcQwuzvxy',
-  'D': 'https://discord.gg/bHxVuv3AxS',
-  'E': 'https://discord.gg/AsV8M6P79c',
-  'F': 'https://discord.gg/cEDxpq6aVS',
-  'G': 'https://discord.gg/KrHJzzErWt',
-  'H': 'https://discord.gg/7x4cFMtgcnw',
-  'ART': '',
-  '게임A': '',
-  '게임D': '',
-};
+let discordLinks = {};
 
 const DEFAULT_TEMPLATE =
 `격일시간표 등 공지사항 필수확인
@@ -44,17 +31,18 @@ const DEFAULT_TEMPLATE =
 
 // ── 초기화 ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([loadTemplate(), loadClasses()]);
+  await Promise.all([loadTemplate(), loadDiscordLinks(), loadClasses()]);
   bindEvents();
 });
 
 async function loadTemplate() {
-  const { data } = await sbClient
-    .from('settings')
-    .select('value')
-    .eq('key', 'message_template')
-    .single();
+  const { data } = await sbClient.from('settings').select('value').eq('key', 'message_template').single();
   messageTemplate = data?.value || DEFAULT_TEMPLATE;
+}
+
+async function loadDiscordLinks() {
+  const { data } = await sbClient.from('settings').select('value').eq('key', 'discord_links').single();
+  discordLinks = data?.value ? JSON.parse(data.value) : {};
 }
 
 async function loadClasses() {
@@ -228,7 +216,7 @@ function copyCard(id, btn) {
 }
 
 function buildMessage(c) {
-  const discordLink = DISCORD_LINKS[c.room] || '-';
+  const discordLink = discordLinks[c.room] || '-';
   return messageTemplate
     .replace('{subject}', c.subject || '-')
     .replace('{days}', c.days || '-')

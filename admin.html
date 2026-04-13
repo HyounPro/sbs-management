@@ -85,6 +85,28 @@
         <div id="templateMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
       </div>
 
+      <!-- 비대면 링크 편집 -->
+      <div class="section">
+        <div class="section-title">강의장별 비대면 링크 편집</div>
+        <div style="font-size:12px;color:#888;margin-bottom:12px;">강의장명과 Discord 링크를 입력하세요. 행 추가/삭제 가능합니다.</div>
+        <div id="discordList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <button class="btn btn-outline" style="width:100%;margin-bottom:12px;" id="addDiscordBtn">+ 강의장 추가</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" style="flex:1;" id="saveDiscordBtn">저장</button>
+        </div>
+        <div id="discordMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
+      </div>
+
+      <!-- 수업별 메모 -->
+      <div class="section">
+        <div class="section-title">수업별 특이사항 메모</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button class="tab-btn active" data-memo-tab="weekday" id="memoTabWeekday">평일반</button>
+          <button class="tab-btn" data-memo-tab="weekend" id="memoTabWeekend">주말반</button>
+        </div>
+        <div id="memoGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <!-- 현재 데이터 현황 -->
       <div class="section">
         <div class="section-title">현재 등록된 개강안내</div>

@@ -40,6 +40,8 @@ function showAdmin() {
   document.getElementById('loginWrap').style.display = 'none';
   document.getElementById('adminWrap').style.display = 'block';
   loadTemplate();
+  loadDiscordLinks();
+  loadMemos('weekday');
   loadStats();
 }
 
@@ -88,6 +90,20 @@ function bindAdminEvents() {
   document.getElementById('saveTemplateBtn').addEventListener('click', saveTemplate);
   document.getElementById('resetTemplateBtn').addEventListener('click', () => {
     document.getElementById('templateEditor').value = DEFAULT_TEMPLATE;
+  });
+
+  document.getElementById('addDiscordBtn').addEventListener('click', () => addDiscordRow());
+  document.getElementById('saveDiscordBtn').addEventListener('click', saveDiscordLinks);
+
+  document.getElementById('memoTabWeekday').addEventListener('click', () => {
+    document.querySelectorAll('[data-memo-tab]').forEach(b => b.classList.remove('active'));
+    document.getElementById('memoTabWeekday').classList.add('active');
+    loadMemos('weekday');
+  });
+  document.getElementById('memoTabWeekend').addEventListener('click', () => {
+    document.querySelectorAll('[data-memo-tab]').forEach(b => b.classList.remove('active'));
+    document.getElementById('memoTabWeekend').classList.add('active');
+    loadMemos('weekend');
   });
 
   document.getElementById('clearDataBtn').addEventListener('click', async () => {
@@ -240,4 +256,94 @@ function addLog(msg, type = 'info') {
 
 function clearLog() {
   document.getElementById('logBox').innerHTML = '';
+}
+
+// ── 비대면 링크 ───────────────────────────────────────────
+async function loadDiscordLinks() {
+  const { data } = await sbClient.from('settings').select('value').eq('key', 'discord_links').single();
+  const links = data?.value ? JSON.parse(data.value) : {
+    'A': 'https://discord.gg/UbPVxWgcct',
+    'B': 'https://discord.gg/VBaPncjxXe',
+    'C': 'https://discord.gg/2WcQwuzvxy',
+    'D': 'https://discord.gg/bHxVuv3AxS',
+    'E': 'https://discord.gg/AsV8M6P79c',
+    'F': 'https://discord.gg/cEDxpq6aVS',
+    'G': 'https://discord.gg/KrHJzzErWt',
+    'H': 'https://discord.gg/7x4cFMtgcnw',
+  };
+  document.getElementById('discordList').innerHTML = '';
+  Object.entries(links).forEach(([room, url]) => addDiscordRow(room, url));
+}
+
+function addDiscordRow(room = '', url = '') {
+  const list = document.getElementById('discordList');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  row.innerHTML = `
+    <input type="text" placeholder="강의장명 (예: A, ART, 게임A)" value="${room}"
+      style="width:180px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;color:#f0f0f0;font-size:13px;outline:none;" class="discord-room">
+    <input type="text" placeholder="Discord 링크" value="${url}"
+      style="flex:1;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;color:#f0f0f0;font-size:13px;outline:none;" class="discord-url">
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;padding:4px;">✕</button>`;
+  list.appendChild(row);
+}
+
+async function saveDiscordLinks() {
+  const rows = document.getElementById('discordList').querySelectorAll('div');
+  const links = {};
+  rows.forEach(row => {
+    const room = row.querySelector('.discord-room')?.value.trim();
+    const url = row.querySelector('.discord-url')?.value.trim();
+    if (room && url) links[room] = url;
+  });
+  const msgEl = document.getElementById('discordMsg');
+  const { error } = await sbClient.from('settings').upsert({
+    key: 'discord_links', value: JSON.stringify(links), updated_at: new Date().toISOString()
+  });
+  if (error) { msgEl.style.color = '#e55'; msgEl.textContent = '저장 실패: ' + error.message; return; }
+  msgEl.style.color = '#5dba5d';
+  msgEl.textContent = '✅ 저장되었습니다.';
+  setTimeout(() => msgEl.textContent = '', 3000);
+}
+
+// ── 수업별 메모 ───────────────────────────────────────────
+async function loadMemos(scheduleType) {
+  const { data, error } = await sbClient
+    .from('classes')
+    .select('id, subject, room, start_time, notes')
+    .eq('schedule_type', scheduleType)
+    .order('room')
+    .order('start_time');
+
+  const grid = document.getElementById('memoGrid');
+  if (error || !data?.length) {
+    grid.innerHTML = '<div style="color:#666;font-size:13px;padding:12px;">등록된 수업이 없습니다.</div>';
+    return;
+  }
+
+  grid.innerHTML = data.map(c => `
+    <div style="display:flex;align-items:center;gap:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;">
+      <div style="min-width:140px;">
+        <div style="font-size:14px;font-weight:700;color:#f0f0f0;">${c.subject}</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">${c.room}강의장 · ${c.start_time || '-'}</div>
+      </div>
+      <input type="text" value="${c.notes === '-' ? '' : (c.notes || '')}"
+        placeholder="특이사항 메모 입력..."
+        data-id="${c.id}"
+        style="flex:1;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;color:#f0f0f0;font-size:13px;outline:none;"
+        class="memo-input">
+      <button onclick="saveMemo('${c.id}', this)"
+        style="background:#f5c400;border:none;border-radius:6px;padding:7px 14px;color:#111;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">저장</button>
+    </div>`).join('');
+}
+
+async function saveMemo(id, btn) {
+  const input = btn.previousElementSibling;
+  const notes = input.value.trim() || '-';
+  const { error } = await sbClient.from('classes').update({ notes }).eq('id', id);
+  if (error) { btn.textContent = '실패'; btn.style.background = '#e55'; return; }
+  btn.textContent = '✓';
+  btn.style.background = '#2d7a2d';
+  btn.style.color = '#fff';
+  setTimeout(() => { btn.textContent = '저장'; btn.style.background = '#f5c400'; btn.style.color = '#111'; }, 2000);
 }
