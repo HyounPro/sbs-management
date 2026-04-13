@@ -1,11 +1,12 @@
 // ── 상태 ────────────────────────────────────────────────
 let allClasses = [];
 let filtered = [];
-let activeTab = 'weekday_apr';
+let activeTab = 'weekday';
 let activeRoom = '전체';
 let searchQuery = '';
 let multiSelectMode = false;
 let selectedIds = new Set();
+let messageTemplate = '';
 
 const DISCORD_LINKS = {
   'A': 'https://discord.gg/UbPVxWgcct',
@@ -18,82 +19,120 @@ const DISCORD_LINKS = {
   'H': 'https://discord.gg/7x4cFMtgcnw',
 };
 
+const DEFAULT_TEMPLATE =
+`격일시간표 등 공지사항 필수확인
+▶ sbs-ansan-notice.co.kr
+
+■ SBS아카데미안산 개강안내 ■
+
+· 수강과목 : {subject}({days})
+· 개강일 : {start_date}
+· 종강일 : {end_date}
+· 수강시간 : {start_time}~{end_time}
+· 강의실 : 3층 {room}강의장
+· 비대면링크 : {discord_link}
+· 대면/비대면 : {face_to_face}
+· 특이사항 : {notes}
+
+학원 소식을 인스타 팔로우 후 확인해보세요 :D
+▶ instagram.com/sbsacademy_ansan
+
+★ 개강안내 확인 후 답변 부탁 드립니다!`;
+
 // ── 초기화 ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadClasses();
+  await Promise.all([loadTemplate(), loadClasses()]);
   bindEvents();
 });
+
+async function loadTemplate() {
+  const { data } = await sbClient
+    .from('settings')
+    .select('value')
+    .eq('key', 'message_template')
+    .single();
+  messageTemplate = data?.value || DEFAULT_TEMPLATE;
+}
 
 async function loadClasses() {
   const { data, error } = await sbClient
     .from('classes')
     .select('*')
+    .order('room', { ascending: true })
     .order('room_slot', { ascending: true });
 
-  if (error) {
-    console.error('데이터 로드 실패:', error);
-    return;
-  }
+  if (error) { console.error('데이터 로드 실패:', error); return; }
 
   allClasses = data || [];
+  buildRoomFilters();
   applyFilters();
+}
+
+// ── 강의실 필터 동적 생성 ────────────────────────────────
+function buildRoomFilters() {
+  const rooms = [...new Set(
+    allClasses
+      .filter(c => c.schedule_type === activeTab)
+      .map(c => c.room)
+  )].sort();
+
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = `<button class="filter-btn ${activeRoom === '전체' ? 'active' : ''}" data-room="전체">전체</button>`;
+
+  rooms.forEach(room => {
+    const btn = document.createElement('button');
+    btn.className = `filter-btn${activeRoom === room ? ' active' : ''}`;
+    btn.dataset.room = room;
+    btn.textContent = `${room}강의장`;
+    bar.appendChild(btn);
+  });
+
+  bar.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      bar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeRoom = btn.dataset.room;
+      applyFilters();
+    });
+  });
 }
 
 // ── 이벤트 바인딩 ────────────────────────────────────────
 function bindEvents() {
-  // 탭
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeTab = btn.dataset.tab;
       activeRoom = '전체';
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector('.filter-btn[data-room="전체"]').classList.add('active');
+      buildRoomFilters();
       applyFilters();
     });
   });
 
-  // 강의실 필터
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeRoom = btn.dataset.room;
-      applyFilters();
-    });
-  });
-
-  // 검색
   document.getElementById('searchInput').addEventListener('input', e => {
     searchQuery = e.target.value.trim();
     applyFilters();
   });
 
-  // 다중선택 토글
   document.getElementById('multiSelectBtn').addEventListener('click', () => {
     multiSelectMode = !multiSelectMode;
     document.getElementById('multiSelectBtn').classList.toggle('active', multiSelectMode);
     if (!multiSelectMode) clearSelection();
   });
 
-  // 전체 복사
   document.getElementById('copyAllBtn').addEventListener('click', () => {
     const texts = filtered.map(c => buildMessage(c));
     copyToClipboard(texts.join('\n\n────────────────────\n\n'));
     showToast('전체 복사 완료!');
   });
 
-  // 선택 복사
   document.getElementById('copySelectedBtn').addEventListener('click', () => {
-    const texts = filtered
-      .filter(c => selectedIds.has(c.id))
-      .map(c => buildMessage(c));
+    const texts = filtered.filter(c => selectedIds.has(c.id)).map(c => buildMessage(c));
     copyToClipboard(texts.join('\n\n────────────────────\n\n'));
     showToast(`${texts.length}개 복사 완료!`);
   });
 
-  // 선택 해제
   document.getElementById('clearSelectBtn').addEventListener('click', clearSelection);
 }
 
@@ -130,15 +169,15 @@ function render() {
         <div class="card-subject">${c.subject}</div>
         <div class="card-room">${c.room}강의장</div>
       </div>
-      <div class="card-days">${c.days}</div>
+      <div class="card-days">${c.days || '-'}</div>
       <div class="card-info">
         <div class="info-row">
           <span class="info-label">개강일</span>
-          <span class="info-value">${c.start_date}</span>
+          <span class="info-value">${c.start_date || '-'}</span>
         </div>
         <div class="info-row">
           <span class="info-label">종강일</span>
-          <span class="info-value">${c.end_date}</span>
+          <span class="info-value">${c.end_date || '-'}</span>
         </div>
         <div class="info-row">
           <span class="info-label">수강시간</span>
@@ -159,11 +198,7 @@ function render() {
 // ── 카드 클릭 ────────────────────────────────────────────
 function handleCardClick(id) {
   if (!multiSelectMode) return;
-  if (selectedIds.has(id)) {
-    selectedIds.delete(id);
-  } else {
-    selectedIds.add(id);
-  }
+  selectedIds.has(id) ? selectedIds.delete(id) : selectedIds.add(id);
   updateSelectBar();
   render();
 }
@@ -175,9 +210,8 @@ function clearSelection() {
 }
 
 function updateSelectBar() {
-  const bar = document.getElementById('selectBar');
   document.getElementById('selectCount').textContent = selectedIds.size;
-  bar.classList.toggle('visible', selectedIds.size > 0);
+  document.getElementById('selectBar').classList.toggle('visible', selectedIds.size > 0);
 }
 
 // ── 복사 ────────────────────────────────────────────────
@@ -187,15 +221,22 @@ function copyCard(id, btn) {
   copyToClipboard(buildMessage(cls));
   btn.textContent = '복사됨 ✓';
   btn.classList.add('copied');
-  setTimeout(() => {
-    btn.textContent = '복사하기';
-    btn.classList.remove('copied');
-  }, 2000);
+  setTimeout(() => { btn.textContent = '복사하기'; btn.classList.remove('copied'); }, 2000);
 }
 
 function buildMessage(c) {
   const discordLink = DISCORD_LINKS[c.room] || '-';
-  return `격일시간표 등 공지사항 필수확인\n▶ sbs-ansan-notice.co.kr\n\n■ SBS아카데미안산 개강안내 ■\n\n· 수강과목 : ${c.subject}(${c.days})\n· 개강일 : ${c.start_date}\n· 종강일 : ${c.end_date}\n· 수강시간 : ${c.start_time}~${c.end_time}\n· 강의실 : 3층 ${c.room}강의장\n· 비대면링크 : ${discordLink}\n· 대면/비대면 : ${c.face_to_face || '대면'}\n· 특이사항 : ${c.notes || '-'}\n\n학원 소식을 인스타 팔로우 후 확인해보세요 :D\n▶ instagram.com/sbsacademy_ansan\n\n★ 개강안내 확인 후 답변 부탁 드립니다!`;
+  return messageTemplate
+    .replace('{subject}', c.subject || '-')
+    .replace('{days}', c.days || '-')
+    .replace('{start_date}', c.start_date || '-')
+    .replace('{end_date}', c.end_date || '-')
+    .replace('{start_time}', c.start_time || '-')
+    .replace('{end_time}', c.end_time || '-')
+    .replace('{room}', c.room || '-')
+    .replace('{discord_link}', discordLink)
+    .replace('{face_to_face}', c.face_to_face || '대면')
+    .replace('{notes}', c.notes || '-');
 }
 
 function copyToClipboard(text) {

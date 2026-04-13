@@ -6,97 +6,35 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const { fileName, rawData } = body;
+    const { fileName, rawData } = await req.json();
+    if (!rawData?.rows) throw new Error('rawData.rows 없음');
 
-    if (!rawData || !rawData.rows) {
-      throw new Error('rawData 또는 rows가 없습니다.');
-    }
-
-    // ── Supabase 클라이언트 ───────────────────────────────
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, serviceKey);
-
-    // ── 시간표 유형 판별 ──────────────────────────────────
-    const sheetName: string = rawData.sheetName || fileName || '';
-    const scheduleType = detectScheduleType(sheetName);
-
-    // ── 엑셀 데이터 → 텍스트 변환 ────────────────────────
-    const tableText = convertRowsToText(rawData.rows);
-
-    // ── Claude API 직접 호출 (fetch) ──────────────────────
-    const claudeApiKey = Deno.env.get('CLAUDE_API_KEY')!;
-    const prompt = buildPrompt(tableText, sheetName);
-
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text();
-      throw new Error(`Claude API 오류: ${claudeRes.status} - ${errText}`);
-    }
-
-    const claudeData = await claudeRes.json();
-    const responseText: string = claudeData.content[0].text;
-
-    // ── JSON 파싱 ─────────────────────────────────────────
-    const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) ||
-                      responseText.match(/(\[[\s\S]*\])/);
-    if (!jsonMatch) {
-      throw new Error(`Claude 응답에서 JSON을 찾지 못했습니다. 응답: ${responseText.slice(0, 200)}`);
-    }
-
-    const jsonStr = jsonMatch[1];
-    const classes = JSON.parse(jsonStr);
-
-    if (!Array.isArray(classes) || classes.length === 0) {
-      throw new Error('파싱된 수업 데이터가 없습니다.');
-    }
-
-    // ── 기존 데이터 삭제 후 삽입 ─────────────────────────
-    await supabase.from('classes').delete().eq('schedule_type', scheduleType);
-
-    const rows = classes.map((c: ClassData) => ({
-      schedule_type: scheduleType,
-      room: c.room || '',
-      room_slot: c.room_slot || '',
-      subject: c.subject || '',
-      days: c.days || '',
-      start_date: c.start_date || '',
-      end_date: c.end_date || '',
-      start_time: c.start_time || '',
-      end_time: c.end_time || '',
-      face_to_face: c.face_to_face || '대면',
-      notes: c.notes || '-',
-    }));
-
-    const { error: insertError } = await supabase.from('classes').insert(rows);
-    if (insertError) throw new Error(`DB 저장 오류: ${insertError.message}`);
-
-    return new Response(
-      JSON.stringify({ success: true, count: rows.length, scheduleType }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    const scheduleType = detectScheduleType(rawData.sheetName || fileName || '');
+    const classes = parseExcel(rawData.rows);
+
+    if (classes.length === 0) throw new Error('파싱된 수업 데이터가 없습니다. 파일명에 평일/주말이 포함되어야 합니다.');
+
+    // 기존 데이터 삭제 후 삽입
+    await supabase.from('classes').delete().eq('schedule_type', scheduleType);
+    const { error } = await supabase.from('classes').insert(
+      classes.map(c => ({ ...c, schedule_type: scheduleType }))
+    );
+    if (error) throw new Error('DB 저장 오류: ' + error.message);
+
+    return new Response(
+      JSON.stringify({ success: true, count: classes.length, scheduleType }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
   } catch (err) {
-    console.error('process-schedule 오류:', err);
+    console.error(err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -106,74 +44,12 @@ Deno.serve(async (req) => {
 
 // ── 시간표 유형 판별 ──────────────────────────────────────
 function detectScheduleType(name: string): string {
-  if (name.includes('4월') && name.includes('주말')) return 'weekend_apr';
-  if (name.includes('4월')) return 'weekday_apr';
-  if (name.includes('3월') && name.includes('주말')) return 'weekend_mar';
-  if (name.includes('3월')) return 'weekday_mar';
-  if (name.includes('주말')) return 'weekend_apr';
-  return 'weekday_apr';
+  if (name.includes('주말')) return 'weekend';
+  return 'weekday';
 }
 
-// ── 엑셀 행 → 텍스트 ─────────────────────────────────────
-function convertRowsToText(rows: unknown[][]): string {
-  return rows
-    .filter((row: unknown[]) => row.some(cell => cell !== null && cell !== undefined && cell !== ''))
-    .map((row: unknown[]) =>
-      row.map(cell => {
-        if (cell === null || cell === undefined) return '';
-        if (typeof cell === 'object' && 'toISOString' in (cell as object)) {
-          return (cell as Date).toISOString().split('T')[0];
-        }
-        return String(cell);
-      }).join('\t')
-    )
-    .join('\n');
-}
-
-// ── Claude 프롬프트 ───────────────────────────────────────
-function buildPrompt(tableText: string, sheetName: string): string {
-  return `아래는 SBS아카데미안산 학원의 시간표 엑셀 데이터입니다. (시트명: ${sheetName})
-
-엑셀 구조 설명:
-- 1행: 강의실 슬롯 헤더 (A-1, A-2, B-1, B-2, C-1 ... H-2)
-- 각 열이 하나의 강의실 슬롯을 나타냄
-- 각 시간 블록마다 (약 10행): 과목명, 요일패턴, 개강일(개:YYYY-MM-DD), 종강일(종:YYYY-MM-DD) 포함
-- 수업 시작시간 블록: 09:00, 11:00, 14:00, 16:00, 18:00, 19:00 등
-- 각 수업의 수강시간은 시작시간 기준 2시간 (09:00→11:00, 11:00→13:00, 14:00→16:00, 19:00→21:00)
-
-데이터:
-${tableText}
-
-위 데이터에서 실제 수업이 있는 항목을 추출하여 JSON 배열로 반환하세요.
-
-조건:
-- 과목명, 개강일(개:), 종강일(종:)이 모두 있는 항목만 포함
-- "수업없음", null, 빈값 항목 제외
-- 세미나/특강도 포함
-- 요일: 월수금월수→월·수·금, 화목화목금→화·목·금, 월~목→월~목 으로 변환
-- 날짜: 2026-04-13 → 04.13 형식으로 변환
-- end_time: start_time + 2시간
-
-JSON만 반환 (다른 텍스트 없이):
-\`\`\`json
-[
-  {
-    "room_slot": "A-1",
-    "room": "A",
-    "subject": "일러스트",
-    "days": "월~목",
-    "start_date": "04.13",
-    "end_date": "05.11",
-    "start_time": "09:00",
-    "end_time": "11:00",
-    "face_to_face": "대면",
-    "notes": "-"
-  }
-]
-\`\`\``;
-}
-
-interface ClassData {
+// ── 엑셀 파서 (A열 시간 기반) ────────────────────────────
+interface ClassRow {
   room_slot: string;
   room: string;
   subject: string;
@@ -182,6 +58,137 @@ interface ClassData {
   end_date: string;
   start_time: string;
   end_time: string;
-  face_to_face?: string;
-  notes?: string;
+  face_to_face: string;
+  notes: string;
+}
+
+function parseExcel(rows: unknown[][]): ClassRow[] {
+  if (rows.length < 2) return [];
+
+  // 1행: 강의실 헤더 (A-1, A-2, B-1 ...)
+  const headers: string[] = (rows[0] as string[]).map(h => h ? String(h).trim() : '');
+
+  const results: ClassRow[] = [];
+
+  // 열별 진행 중인 수업
+  const pending = new Map<number, Partial<ClassRow>>();
+  let lastTime = '';
+
+  for (let ri = 1; ri < rows.length; ri++) {
+    const row = rows[ri] as unknown[];
+    const colA = row[0];
+    const timeStr = extractTime(colA);
+
+    // A열 시간 업데이트
+    if (timeStr) lastTime = timeStr;
+
+    // 각 열 처리
+    for (let ci = 1; ci < row.length; ci++) {
+      const cell = row[ci];
+      if (cell === null || cell === undefined) continue;
+      const val = String(cell).trim();
+      if (!val) continue;
+
+      const roomSlot = headers[ci] || '';
+      if (!roomSlot || roomSlot === '정원') continue;
+      const room = roomSlot[0];
+
+      if (val.startsWith('개:')) {
+        const p = pending.get(ci);
+        if (p && !p.start_date) p.start_date = fmtDate(val.slice(2).trim());
+
+      } else if (val.startsWith('종:')) {
+        const p = pending.get(ci);
+        if (p) {
+          p.end_date = fmtDate(val.slice(2).trim());
+          if (p.subject && p.start_date && p.end_date) {
+            results.push(p as ClassRow);
+          }
+          pending.delete(ci);
+        }
+
+      } else if (isDays(val)) {
+        const p = pending.get(ci);
+        if (p && !p.days) p.days = fmtDays(val);
+
+      } else if (!isMeta(val)) {
+        // 과목명 — 현재 진행 중인 수업이 없을 때만 새 수업 시작
+        if (!pending.has(ci) && lastTime) {
+          pending.set(ci, {
+            room_slot: roomSlot,
+            room,
+            subject: val,
+            start_time: lastTime,
+            end_time: addTwoHours(lastTime),
+            days: '',
+            start_date: '',
+            end_date: '',
+            face_to_face: '대면',
+            notes: '-',
+          });
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+// ── 헬퍼 ─────────────────────────────────────────────────
+
+// A열 시간 추출: "TIME:09:00" → "09:00"
+function extractTime(val: unknown): string {
+  if (typeof val === 'string' && val.startsWith('TIME:')) return val.slice(5);
+  return '';
+}
+
+// 메타데이터 여부
+function isMeta(val: string): boolean {
+  if (val.startsWith('전체출석율')) return true;
+  if (val === '수업없음') return true;
+  if (val.startsWith('정원')) return true;
+  if (val.startsWith('배정:')) return true;
+  if (val.includes('[ 재:')) return true;
+  if (val.startsWith('개:') || val.startsWith('종:')) return true;
+  if (/^\d[\d\s\(\)WR%,]+$/.test(val)) return true;
+  return false;
+}
+
+// 요일 패턴 여부
+function isDays(val: string): boolean {
+  const known = ['월~목', '월~금', '월수금월수', '화목화목금', '월수금', '화목', '금', '토', '토일', '수/목/금', '월/수/금'];
+  if (known.includes(val)) return true;
+  if (/^[월화수목금토일~·\/\s]{2,}$/.test(val)) return true;
+  return false;
+}
+
+// 요일 포맷
+function fmtDays(val: string): string {
+  const map: Record<string, string> = {
+    '월수금월수': '월·수·금',
+    '화목화목금': '화·목·금',
+    '월~목': '월~목',
+    '월~금': '월~금',
+    '월수금': '월·수·금',
+    '화목': '화·목',
+    '금': '금',
+    '토': '토',
+    '토일': '토·일',
+    '수/목/금': '수·목·금',
+    '월/수/금': '월·수·금',
+  };
+  return map[val] || val;
+}
+
+// 날짜 포맷: "2026-04-13" → "04.13"
+function fmtDate(raw: string): string {
+  const m = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}.${m[3]}`;
+  return raw;
+}
+
+// +2시간
+function addTwoHours(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  return `${String(h + 2).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
